@@ -19,7 +19,11 @@ import android.view.*;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
+import com.google.android.gms.wearable.DataEvent;
+import com.google.android.gms.wearable.DataEventBuffer;
 import com.google.android.gms.wearable.DataMap;
+import com.google.android.gms.wearable.DataMapItem;
+import com.ustwo.clockwise.ConnectedWatchFace;
 import com.ustwo.clockwise.WatchFace;
 import com.ustwo.clockwise.WatchFaceTime;
 import com.ustwo.clockwise.WatchShape;
@@ -32,8 +36,10 @@ import java.util.Date;
 /**
  * Created by stephenblack on 12/29/14.
  */
-public  abstract class BaseWatchFace extends WatchFace {
-    public final static IntentFilter INTENT_FILTER;
+public  abstract class BaseWatchFace extends ConnectedWatchFace {
+    public static final String WEARABLE_DATA_PATH = "/nightscout_watch_data";
+    public static final String WEARABLE_RESEND_PATH = "/nightscout_watch_data_resend";
+
     public static final long[] vibratePattern = {0,400,300,400,300,400};
     public TextView mTime, mSgv, mDirection, mTimestamp, mUploaderBattery, mDelta;
     public RelativeLayout mRelativeLayout;
@@ -80,11 +86,6 @@ public  abstract class BaseWatchFace extends WatchFace {
 
     public void performViewSetup() {
         final WatchViewStub stub = (WatchViewStub) layoutView.findViewById(R.id.watch_view_stub);
-        IntentFilter messageFilter = new IntentFilter(Intent.ACTION_SEND);
-
-        MessageReceiver messageReceiver = new MessageReceiver();
-        LocalBroadcastManager.getInstance(this).registerReceiver(messageReceiver, messageFilter);
-
         stub.setOnLayoutInflatedListener(new WatchViewStub.OnLayoutInflatedListener() {
             @Override
             public void onLayoutInflated(WatchViewStub stub) {
@@ -101,10 +102,16 @@ public  abstract class BaseWatchFace extends WatchFace {
                 mRelativeLayout.measure(specW, specH);
                 mRelativeLayout.layout(0, 0, mRelativeLayout.getMeasuredWidth(),
                         mRelativeLayout.getMeasuredHeight());
+                WatchFaceTime startTime = new WatchFaceTime();
+                startTime.set(0);
+                onTimeChanged(startTime, new WatchFaceTime());
             }
         });
-        ListenerService.requestData(this);
         wakeLock.acquire(50);
+    }
+
+    public void requestData() {
+        putMessage(WEARABLE_RESEND_PATH, null, null);
     }
 
     public int ageLevel() {
@@ -133,19 +140,16 @@ public  abstract class BaseWatchFace extends WatchFace {
         super.onDestroy();
     }
 
-    static {
-        INTENT_FILTER = new IntentFilter();
-        INTENT_FILTER.addAction(Intent.ACTION_TIME_TICK);
-        INTENT_FILTER.addAction(Intent.ACTION_TIMEZONE_CHANGED);
-        INTENT_FILTER.addAction(Intent.ACTION_TIME_CHANGED);
-    }
-
     @Override
     protected void onDraw(Canvas canvas) {
         if(layoutSet) {
             this.mRelativeLayout.draw(canvas);
             Log.d("onDraw", "draw");
+            if (bgDataList.size() <= 2) {
+                requestData();
+            }
         }
+        wakeLock.release();
     }
 
     @Override
@@ -161,37 +165,46 @@ public  abstract class BaseWatchFace extends WatchFace {
                     mRelativeLayout.getMeasuredHeight());
         }
     }
-
-    public class MessageReceiver extends BroadcastReceiver {
         @Override
-        public void onReceive(Context context, Intent intent) {
-            DataMap dataMap = DataMap.fromBundle(intent.getBundleExtra("data"));
-            if (layoutSet) {
-                wakeLock.acquire(50);
-                sgvLevel = dataMap.getLong("sgvLevel");
-                batteryLevel = dataMap.getInt("batteryLevel");
-                datetime = dataMap.getDouble("timestamp");
+        public void onDataChanged(DataEventBuffer dataEvents) {
+            DataMap dataMap;
 
-                mSgv.setText(dataMap.getString("sgvString"));
-                mDirection.setText(dataMap.getString("slopeArrow"));
-                mUploaderBattery.setText("Uploader: " + dataMap.getString("battery") + "%");
-                mDelta.setText(dataMap.getString("delta"));
+            for (DataEvent event : dataEvents) {
 
-                mTimestamp.setText(readingAge());
-                if (chart != null) {
-                    addToWatchSet(dataMap);
-                    setupCharts();
+                if (event.getType() == DataEvent.TYPE_CHANGED) {
+                    String path = event.getDataItem().getUri().getPath();
+                    if (path.equals(WEARABLE_DATA_PATH)) {
+                        dataMap = DataMapItem.fromDataItem(event.getDataItem()).getDataMap();
+                        if (layoutSet) {
+                            Log.d("MessageReciever: ", "Data received");
+                            wakeLock.acquire(50);
+                            sgvLevel = dataMap.getLong("sgvLevel");
+                            batteryLevel = dataMap.getInt("batteryLevel");
+                            datetime = dataMap.getDouble("timestamp");
+
+                            mSgv.setText(dataMap.getString("sgvString"));
+                            mDirection.setText(dataMap.getString("slopeArrow"));
+                            mUploaderBattery.setText("Uploader: " + dataMap.getString("battery") + "%");
+                            mDelta.setText(dataMap.getString("delta"));
+
+                            mTimestamp.setText(readingAge());
+                            if (chart != null) {
+                                addToWatchSet(dataMap);
+                                setupCharts();
+                            }
+                            mRelativeLayout.measure(specW, specH);
+                            mRelativeLayout.layout(0, 0, mRelativeLayout.getMeasuredWidth(),
+                                    mRelativeLayout.getMeasuredHeight());
+                            invalidate();
+                        } else {
+                            Log.d("ERROR: ", "DATA IS NOT YET SET");
+                        }
+                        setColor();
+                    }
+
                 }
-                mRelativeLayout.measure(specW, specH);
-                mRelativeLayout.layout(0, 0, mRelativeLayout.getMeasuredWidth(),
-                        mRelativeLayout.getMeasuredHeight());
-                invalidate();
-            } else {
-                Log.d("ERROR: ", "DATA IS NOT YET SET");
             }
-            setColor();
         }
-    }
 
     public void setColor() { Log.e("ERROR: ", "MUST OVERRIDE IN CLASS"); }
 
@@ -204,7 +217,7 @@ public  abstract class BaseWatchFace extends WatchFace {
                         .setVibrate(vibratePattern);
             NotificationManager mNotifyMgr = (NotificationManager) getApplicationContext().getSystemService(getApplicationContext().NOTIFICATION_SERVICE);
             mNotifyMgr.notify(missed_readings_alert_id, notification.build());
-            ListenerService.requestData(this); // attempt to recover missing data
+            requestData();
         }
     }
 
@@ -260,8 +273,9 @@ public  abstract class BaseWatchFace extends WatchFace {
             chart.setLineChartData(bgGraphBuilder.lineData());
             chart.setViewportCalculationEnabled(true);
             chart.setMaximumViewport(chart.getMaximumViewport());
-        } else {
-            ListenerService.requestData(this);
+        }
+        if (bgDataList.size() <= 2) {
+            requestData();
         }
     }
 }

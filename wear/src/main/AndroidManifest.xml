@@ -22,6 +22,10 @@
                        android:resource="@xml/watch_face"/>
             <meta-data android:name="com.google.android.wearable.watchface.preview" android:resource="@drawable/ic_launcher" />
             <intent-filter>
+                <action android:name="com.google.android.gms.wearable.BIND_LISTENER" />
+            </intent-filter>
+
+            <intent-filter>
                 <action android:name="android.service.wallpaper.WallpaperService" />
                 <category android:name="com.google.android.wearable.watchface.category.WATCH_FACE" />
             </intent-filter>
@@ -36,6 +40,10 @@
                        android:resource="@xml/watch_face"/>
             <meta-data android:name="com.google.android.wearable.watchface.preview" android:resource="@drawable/ic_launcher" />
             <intent-filter>
+                <action android:name="com.google.android.gms.wearable.BIND_LISTENER" />
+            </intent-filter>
+
+            <intent-filter>
                 <action android:name="android.service.wallpaper.WallpaperService" />
                 <category android:name="com.google.android.wearable.watchface.category.WATCH_FACE" />
             </intent-filter>
@@ -49,6 +57,10 @@
             <meta-data android:name="android.service.wallpaper"
                        android:resource="@xml/watch_face"/>
             <meta-data android:name="com.google.android.wearable.watchface.preview" android:resource="@drawable/ic_launcher" />
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.BIND_LISTENER" />
+            </intent-filter>
+
             <intent-filter>
                 <action android:name="android.service.wallpaper.WallpaperService" />
                 <category android:name="com.google.android.wearable.watchface.category.WATCH_FACE" />
@@ -67,12 +79,10 @@
                 <action android:name="android.service.wallpaper.WallpaperService" />
                 <category android:name="com.google.android.wearable.watchface.category.WATCH_FACE" />
             </intent-filter>
-        </service>
-
-        <service android:name=".ListenerService">
             <intent-filter>
                 <action android:name="com.google.android.gms.wearable.BIND_LISTENER" />
             </intent-filter>
+
         </service>
 
     </application>
